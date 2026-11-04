@@ -11,22 +11,6 @@ docs/        architecture notes
 
 ## Quick start
 
-**Windows: start everything after setup**
-
-Once the backend virtual environment and frontend dependencies are installed, run `start-lookup.bat` from the project folder (double-click it or run it in a terminal). It opens the API, crawler worker, and web app in separate windows. Wait for the web window to show its Local URL, then open <http://localhost:5173>. Close those windows to stop the services.
-
-For first-time setup, open PowerShell in the project folder and run:
-
-```powershell
-cd backend
-py -3.12 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -e ".[dev]"
-cd ..\apps\web
-npm.cmd install
-cd ..\..
-.\start-lookup.bat
-```
-
 **Backend** (Python 3.12+)
 
 ```bash
@@ -34,16 +18,16 @@ cd backend
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 cp .env.example .env
-set -a; source .env; set +a    # load settings into this shell (needed for the worker too)
-uvicorn app.main:app --reload   # API on http://localhost:8000 (docs at /docs); migrates the DB on start
+set -a; source .env; set +a     # load settings into this shell (needed for the worker too)
+uvicorn app.main:app --reload   # API on http://localhost:8000 (docs at /api/docs); migrates the DB on start
 python -m app.worker            # in a second terminal: processes queued crawl jobs
 # manual migration, if you disable AUTO_MIGRATE:  python -m app.db.migrate
 ```
 
-**Frontend** (Node 22.12+)
+**Frontend** (Node 20+)
 
 ```bash
-cd apps/webs
+cd apps/web
 npm install
 npm run dev                     # http://localhost:5173, /api is proxied to :8000
 ```
@@ -88,11 +72,26 @@ inside the activated virtual environment, and run commands from `backend/`.
 `POST /crawl` (202), `GET /crawl/jobs`, `GET /crawl/jobs/{id}` · `GET /health`, `GET /stats`.
 Errors share one envelope: `{"error": {"code", "message", "details?"}}`. Lists are paginated (`page`, `limit ≤ 100`).
 
-## Deployment
+## Deployment (Vercel, one project, two services)
 
-* **Frontend → Vercel**: project root `apps/web` (uses `@sveltejs/adapter-vercel`). Set `PUBLIC_API_BASE_URL` to the API origin.
-* **Backend**: `backend/api/index.py` + `vercel.json` expose the FastAPI app on Vercel, **but Vercel's filesystem is ephemeral**: SQLite writes will not persist and the crawler worker cannot run there. Realistic options: run the API + worker on a VM/container with a persistent volume (recommended), or bundle a prebuilt read-only database for search-only use. A durable serverless setup needs a different database behind the repository interfaces (`app/repositories/`), which is the intended seam; no alternative adapter is implemented.
-* Set `CORS_ORIGINS` to your frontend origin(s).
+The root `vercel.json` defines two services behind one domain:
+
+| Service | Root | Public? | Notes |
+| --- | --- | --- | --- |
+| `web` | `apps/web` | yes, everything except `/api/*` | SvelteKit (`adapter-vercel`) |
+| `backend` | `backend` | only `/api/*` | FastAPI; routes already live under `/api/v1`, docs at `/api/docs` |
+
+* `web` declares a binding to `backend`, so Vercel injects `BACKEND_URL` into it. The search page's
+  server load (`+page.server.ts`) calls the backend through that internal URL. Browser calls
+  (admin pages) go to the same origin, `/api/v1/...`, which the rewrite sends to `backend`; no CORS is needed.
+* Develop the whole thing locally with `vercel dev`. Without it, use the Quick start commands above.
+* **Persistence:** Vercel's filesystem is read-only except `/tmp`, and instances are ephemeral. On Vercel the
+  database defaults to `/tmp/search.db`, so data is lost between cold starts, and the crawl worker
+  (`python -m app.worker`) cannot run as a service. Use Vercel only for demos or a prebuilt read-only index; for real use
+  run the backend and worker on a VM/container with a persistent volume (see `docker-compose.yml`) and point the web app at it
+  with `PUBLIC_API_BASE_URL` (and drop the `backend` service/rewrite).
+* The backend's entrypoint (`app/main.py`, variable `app`) is auto-detected; if Vercel does not find it, add
+  `"entrypoint": "app/main.py"` to the `backend` service.
 
 ## Known limitations (please read)
 
