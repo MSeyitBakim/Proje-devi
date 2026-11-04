@@ -1,0 +1,18 @@
+# Runs the API and the crawl worker against one SQLite file on a shared volume.
+# The web app is deployed separately (see README).
+services:
+  api:
+    build: ./backend
+    ports: ["8000:8000"]
+    environment:
+      CORS_ORIGINS: http://localhost:5173
+    volumes: ["search-data:/data"]
+  worker:
+    build: ./backend
+    command: ["python", "-m", "app.worker"]
+    environment:
+      CRAWLER_CONTACT: ""   # set to your URL or e-mail
+    volumes: ["search-data:/data"]
+    depends_on: [api]
+volumes:
+  search-data:
