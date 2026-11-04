@@ -1,0 +1,11 @@
+{
+  "groups": [
+    ["araba", "otomobil", "oto"],
+    ["bilgisayar", "pc", "computer"],
+    ["telefon", "cep telefonu", "mobil"],
+    ["car", "automobile"],
+    ["laptop", "notebook"],
+    ["buy", "purchase"],
+    ["programlama", "programming", "coding", "yazılım"]
+  ]
+}
